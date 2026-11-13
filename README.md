@@ -48,12 +48,13 @@ signage.
 
 1. Flash Raspberry Pi OS Lite (64-bit) with Raspberry Pi Imager. In its settings,
    set a hostname (e.g. `signage`), your Wi-Fi, and enable SSH.
-2. Copy this folder to the Pi and run the installer:
+2. On the Pi (over SSH or Raspberry Pi Connect's browser shell), download the
+   code and run the installer:
 
    ```bash
-   scp -r pi-signage pi@signage.local:~        # from your computer
-   ssh pi@signage.local
-   cd pi-signage
+   sudo apt update && sudo apt install -y git
+   git clone https://github.com/projectxcreative/pi-tv-sinage.git ~/pi-tv-sinage
+   cd ~/pi-tv-sinage
    sudo ./install.sh
    ```
 
@@ -64,7 +65,13 @@ signage.
 4. Open `http://signage.local` (or the Pi's IP address) from a computer or phone
    on the same network and log in.
 
-To update later, copy the new folder over and run `sudo ./install.sh` again.
+To update later:
+
+```bash
+cd ~/pi-tv-sinage && git pull && sudo ./install.sh
+```
+
+
 Your media, playlist and login are kept.
 
 ## Everyday commands
