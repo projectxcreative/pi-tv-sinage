@@ -65,7 +65,8 @@ def playback_warning(codec, width, height):
     big = max(w, h) > 1920 or min(w, h) > 1088
     if codec == "h264" and big:
         return ("This is 4K H.264. The Pi 4 can only hardware-decode H.264 up to 1080p, "
-                "so it will stutter. Re-encode it to H.265 (HEVC) for smooth 4K.")
+                "so it will stutter. Drop it on Convert for TV on the Mac (or re-encode it to H.265/HEVC) "
+                "and upload the converted copy for smooth 4K.")
     if codec not in HW_LIMITS and big:
         return (f"This video uses {codec.upper()}, which the Pi 4 decodes in software. "
                 "Above 1080p it will stutter. Re-encode it to H.265 (HEVC).")

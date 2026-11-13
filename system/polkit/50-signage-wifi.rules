@@ -1,0 +1,14 @@
+// Lets the signage web admin (user "signage") scan for, join and forget Wi-Fi
+// networks through NetworkManager, and nothing else.
+polkit.addRule(function (action, subject) {
+  var allowed = [
+    "org.freedesktop.NetworkManager.network-control",
+    "org.freedesktop.NetworkManager.wifi.scan",
+    "org.freedesktop.NetworkManager.enable-disable-wifi",
+    "org.freedesktop.NetworkManager.settings.modify.system",
+    "org.freedesktop.NetworkManager.settings.modify.own"
+  ];
+  if (subject.user === "signage" && allowed.indexOf(action.id) >= 0) {
+    return polkit.Result.YES;
+  }
+});

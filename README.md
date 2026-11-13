@@ -24,7 +24,24 @@ H.264 decoder stops at 1080p, so a 4K H.264 file (the usual "MP4" from phones
 and editing apps) will stutter. The admin page detects this on upload and
 shows a warning on the item.
 
-To convert a video to 4K HEVC on your computer (free, with [ffmpeg](https://ffmpeg.org) or HandBrake):
+### Convert for TV (Mac)
+
+`tools/mac/Convert for TV.applescript` is a drag-and-drop app that converts
+videos to 4K H.265 with macOS's built-in `avconvert`, using the Mac's hardware
+encoder (nothing to install). A 13-minute 4K video takes about 6 minutes on an
+Apple Silicon Mac. Build it once:
+
+```bash
+osacompile -o ~/Applications/"Convert for TV.app" tools/mac/"Convert for TV.applescript"
+```
+
+Drop videos on it (or double-click it and choose them). Each converted copy is
+saved next to the original as `<name> (TV 4K HEVC).mp4`; upload that one.
+
+Converting on the Pi itself isn't practical: it has no H.265 encoder, so a
+13-minute 4K video takes 4–5 hours in software.
+
+Other ways to convert to 4K HEVC (free, with [ffmpeg](https://ffmpeg.org) or HandBrake):
 
 ```bash
 ffmpeg -i input.mp4 -c:v libx265 -crf 22 -preset medium -tag:v hvc1 \
@@ -77,12 +94,23 @@ Your media, playlist and login are kept.
 ## Everyday commands
 
 ```bash
+sudo signage-wifi                                # choose a Wi-Fi network (over SSH)
 sudo signage-passwd                              # reset the admin login
 sudo systemctl restart signage-player            # restart playback
 sudo journalctl -u signage-player -f             # player logs
 sudo journalctl -u signage-web -f                # web admin logs
 sudo nano /etc/signage/signage.env               # settings (port, audio, upload limit...)
 ```
+
+## Wi-Fi setup with just a keyboard
+
+When the Pi starts, it waits up to 45 seconds for a saved Wi-Fi network or a
+network cable. If neither connects, the TV shows a Wi-Fi setup screen: plug in
+a USB keyboard, pick the network with the arrow keys and Enter, type the
+password (Tab shows what you've typed) and press Enter. Once connected it shows
+the admin address for a few seconds, then the signage starts. If a saved
+network comes back on its own while the list is showing, it carries on by
+itself. To change networks later, SSH in and run `sudo signage-wifi`.
 
 ## Settings file (`/etc/signage/signage.env`)
 

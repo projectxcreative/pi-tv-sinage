@@ -1,0 +1,23 @@
+[Unit]
+Description=TV signage Wi-Fi setup wizard (on the TV, keyboard only)
+# Show on the TV's console before the login prompt and before the player
+# takes over the screen. Exits straight away if the Pi is already online.
+After=NetworkManager.service systemd-user-sessions.service
+Wants=NetworkManager.service
+Before=signage-player.service getty@tty1.service
+
+[Service]
+Type=oneshot
+# Runs as root: joining networks with nmcli needs it.
+WorkingDirectory=/opt/signage
+Environment=PYTHONUNBUFFERED=1 TERM=linux LANG=C.UTF-8
+ExecStart=/opt/signage/venv/bin/python -m signage.wifi_setup
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

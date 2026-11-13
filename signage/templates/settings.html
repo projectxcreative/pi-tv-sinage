@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Settings · Signage{% endblock %}
+{% block title %}Settings · TV Signage{% endblock %}
 {% block content %}
 <h1>Settings</h1>
 {% if message %}<p class="alert ok">{{ message }}</p>{% endif %}
@@ -24,6 +24,35 @@
   </form>
 </section>
 
+<section class="card" id="wifi">
+  <h2>Wi-Fi</h2>
+  <p id="wifi-status" class="wifi-status muted">Checking the Wi-Fi…</p>
+  <div id="wifi-job" class="alert" hidden></div>
+
+  <div class="list-head">
+    <h3>Nearby networks</h3>
+    <button class="secondary" id="wifi-scan" type="button">Scan</button>
+  </div>
+  <ul class="wifi-list" id="wifi-networks"><li class="muted">Press Scan to look for networks.</li></ul>
+
+  <form id="wifi-form" class="wifi-form" hidden>
+    <h3 id="wifi-form-title">Join a network</h3>
+    <label id="wifi-ssid-row" hidden>Network name <input id="wifi-ssid" autocomplete="off" maxlength="32"></label>
+    <label id="wifi-pass-row">Password
+      <span class="pass-row"><input id="wifi-pass" type="password" autocomplete="off" maxlength="63">
+      <button class="secondary" type="button" id="wifi-show">Show</button></span>
+    </label>
+    <p class="muted hint">If you're using this page over the same Wi-Fi, it will lose connection for up to a minute
+      while the Pi switches. If the new network doesn't work, the Pi goes back to the one it's on now.</p>
+    <button class="primary" id="wifi-join">Join network</button>
+    <button class="link" type="button" id="wifi-cancel">Cancel</button>
+  </form>
+
+  <h3>Saved networks</h3>
+  <p class="muted hint">The Pi joins these by itself when they're in range.</p>
+  <ul class="wifi-list" id="wifi-saved"></ul>
+</section>
+
 <section class="card">
   <h2>Login</h2>
   <form method="post" class="stack">
@@ -44,6 +73,7 @@
 </section>
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='wifi.js') }}"></script>
 <script>
 document.getElementById('restart-btn').addEventListener('click', async () => {
   const token = document.querySelector('meta[name=csrf-token]').content;
