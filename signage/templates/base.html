@@ -4,13 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}Signage{% endblock %}</title>
+  <title>{% block title %}TV Signage · Project X Creative{% endblock %}</title>
+  <meta name="theme-color" content="#08003E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
   {% if user %}
   <header class="topbar">
-    <a class="brand" href="{{ url_for('index') }}">TV Signage</a>
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="wordmark">Project X Creative</span>
+      <span class="brand-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="product">TV Signage</span>
+    </a>
     <nav>
       <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Playlist</a>
       <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' }}">Settings</a>
@@ -24,6 +32,7 @@
   <main class="{% block main_class %}page{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+  {% if user %}<footer class="footer">TV Signage by <a href="https://projectxcreative.com" target="_blank" rel="noopener">Project X Creative</a></footer>{% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

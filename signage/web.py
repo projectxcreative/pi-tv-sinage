@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import db, media
 from .config import Config
+from .wifi_setup import NM, DemoNM
 
 log = logging.getLogger("signage.web")
 
@@ -56,7 +57,42 @@ def set_credentials(conn, username, password):
     db.set_setting(conn, "admin_password_hash", generate_password_hash(password))
 
 
-def create_app(config=None):
+class WifiSwitcher:
+    """Joins a Wi-Fi network in the background.
+
+    Switching networks can cut off the browser that asked for it, so the work
+    happens on a thread and the page polls for the result. NM.connect() falls
+    back to the previous network if the new one fails.
+    """
+
+    def __init__(self, nm):
+        self.nm = nm
+        self._lock = threading.Lock()
+        self.job = {"state": "idle"}
+
+    def busy(self):
+        return self.job.get("state") == "connecting"
+
+    def start(self, ssid, password, hidden):
+        with self._lock:
+            if self.busy():
+                return False
+            self.job = {"state": "connecting", "ssid": ssid, "started": time.time()}
+        threading.Thread(target=self._run, args=(ssid, password, hidden), daemon=True).start()
+        return True
+
+    def _run(self, ssid, password, hidden):
+        try:
+            ok, err = self.nm.connect(ssid, password, hidden)
+        except Exception as exc:  # never leave the job stuck in "connecting"
+            log.exception("Wi-Fi connect failed")
+            ok, err = False, str(exc)
+        log.info("Wi-Fi switch to %r: %s", ssid, "ok" if ok else err)
+        self.job = {"state": "ok" if ok else "failed", "ssid": ssid, "message": err,
+                    "finished": time.time()}
+
+
+def create_app(config=None, nm=None):
     config = config or Config()
     config.ensure_dirs()
 
@@ -70,6 +106,10 @@ def create_app(config=None):
     )
     app.signage_config = config
     throttle = LoginThrottle()
+    if nm is None:
+        nm = DemoNM() if os.environ.get("SIGNAGE_WIFI_DEMO") else NM()
+    wifi = WifiSwitcher(nm)
+    app.wifi = wifi
 
     def get_db():
         if "db" not in g:
@@ -345,6 +385,51 @@ def create_app(config=None):
             except (TypeError, ValueError):
                 return jsonify(error="id required"), 400
         db.set_json(get_db(), "player_command", payload)
+        return jsonify(ok=True)
+
+    # ---- Wi-Fi -------------------------------------------------------------------
+
+    @app.get("/api/wifi")
+    @login_required
+    def api_wifi():
+        return jsonify(available=nm.has_wifi(), status=nm.status(),
+                       saved=nm.wifi_profiles(), job=wifi.job)
+
+    @app.get("/api/wifi/scan")
+    @login_required
+    def api_wifi_scan():
+        if wifi.busy():
+            return jsonify(error="Busy switching networks. Try again in a moment."), 409
+        return jsonify(networks=[{"ssid": n.ssid, "signal": n.signal, "secure": n.secure,
+                                  "in_use": n.in_use} for n in nm.scan()])
+
+    @app.post("/api/wifi/connect")
+    @login_required
+    def api_wifi_connect():
+        body = request.get_json(silent=True) or {}
+        ssid = str(body.get("ssid") or "").strip()
+        password = str(body.get("password") or "")
+        hidden = bool(body.get("hidden"))
+        if not 1 <= len(ssid.encode()) <= 32:
+            return jsonify(error="Enter the network name (up to 32 characters)."), 400
+        if password and not 8 <= len(password) <= 63:
+            return jsonify(error="Wi-Fi passwords are 8 to 63 characters."), 400
+        if not wifi.start(ssid, password, hidden):
+            return jsonify(error="Already switching networks. Wait for it to finish."), 409
+        return jsonify(ok=True), 202
+
+    @app.post("/api/wifi/forget")
+    @login_required
+    def api_wifi_forget():
+        body = request.get_json(silent=True) or {}
+        uuid_ = str(body.get("uuid") or "")
+        profile = next((p for p in nm.wifi_profiles() if p["uuid"] == uuid_), None)
+        if not profile:
+            return jsonify(error="That network isn't saved."), 404
+        if profile["active"]:
+            return jsonify(error="The Pi is using this network now. Join another one first."), 409
+        if not nm.forget(uuid_):
+            return jsonify(error="Could not forget that network."), 500
         return jsonify(ok=True)
 
     # ---- files -----------------------------------------------------------------

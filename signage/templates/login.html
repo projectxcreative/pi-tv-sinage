@@ -1,7 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Log in · Signage{% endblock %}
+{% block title %}Log in · TV Signage · Project X Creative{% endblock %}
 {% block main_class %}login-page{% endblock %}
 {% block content %}
+<div class="login-brand">
+  <span class="wordmark">Project X Creative</span>
+  <span class="brand-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+</div>
 <div class="card login-card">
   <h1>TV Signage</h1>
   {% if not_configured %}

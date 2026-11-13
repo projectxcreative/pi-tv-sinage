@@ -50,6 +50,9 @@ def mpv_command_line(config, image_duration):
         "--prefetch-playlist=yes",
         "--loop-file=no",
         "--image-display-duration=%s" % image_duration,
+        # The default (high-quality) scalers are too heavy for the Pi 4 GPU:
+        # at 1440p60 it dropped ~10 frames a second; "fast" drops none.
+        "--profile=fast",
         "--hwdec=%s" % config.hwdec,
         "--audio-device=%s" % config.audio_device,
         "--input-ipc-server=%s" % config.mpv_socket,

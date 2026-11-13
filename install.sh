@@ -90,8 +90,27 @@ exec runuser -u signage -- env SIGNAGE_DATA_DIR="\$SIGNAGE_DATA_DIR" \\
 EOF
 chmod 755 /usr/local/bin/signage-passwd
 
+cat > /usr/local/bin/signage-wifi <<EOF
+#!/usr/bin/env bash
+# Open the Wi-Fi setup wizard in this terminal (works over SSH too).
+set -euo pipefail
+[[ \$EUID -eq 0 ]] || { echo "Run with sudo: sudo signage-wifi" >&2; exit 1; }
+cd $APP_DIR
+exec $APP_DIR/venv/bin/python -m signage.wifi_setup --force "\$@"
+EOF
+chmod 755 /usr/local/bin/signage-wifi
+
+say "Letting the web admin manage Wi-Fi"
+if [[ -d /etc/polkit-1/rules.d ]]; then
+  install -m 644 "$SRC_DIR/system/polkit/50-signage-wifi.rules" /etc/polkit-1/rules.d/
+  systemctl try-reload-or-restart polkit.service 2>/dev/null || true
+else
+  echo "polkit isn't installed, so the Wi-Fi page in Settings will be read-only."
+fi
+
 say "Installing systemd services"
-cp "$SRC_DIR/systemd/signage-web.service" "$SRC_DIR/systemd/signage-player.service" /etc/systemd/system/
+cp "$SRC_DIR/systemd/signage-web.service" "$SRC_DIR/systemd/signage-player.service" \
+   "$SRC_DIR/systemd/signage-wifi-setup.service" /etc/systemd/system/
 systemctl daemon-reload
 
 # The player draws straight to the HDMI output, which needs the desktop off.
@@ -143,7 +162,7 @@ then
 fi
 
 say "Starting services"
-systemctl enable signage-web.service signage-player.service
+systemctl enable signage-web.service signage-player.service signage-wifi-setup.service
 systemctl restart signage-web.service
 if [[ "$(systemctl get-default)" != "graphical.target" ]] || [[ -n "${NEED_REBOOT:-}" ]]; then
   systemctl restart signage-player.service || true
