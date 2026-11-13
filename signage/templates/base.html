@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Signage{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  {% if user %}
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">TV Signage</a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Playlist</a>
+      <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' }}">Settings</a>
+      <form method="post" action="{{ url_for('logout') }}" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="link">Log out</button>
+      </form>
+    </nav>
+  </header>
+  {% endif %}
+  <main class="{% block main_class %}page{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

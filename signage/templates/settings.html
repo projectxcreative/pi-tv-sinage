@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Settings · Signage{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if message %}<p class="alert ok">{{ message }}</p>{% endif %}
+{% if error %}<p class="alert error">{{ error }}</p>{% endif %}
+
+<section class="card">
+  <h2>Playback</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="playback">
+    <label>Show each photo for (seconds)
+      <input type="number" name="image_duration" min="1" max="3600" step="1" value="{{ v.image_duration }}">
+      <span class="muted">You can override this for a single photo in the playlist.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="mute" {{ 'checked' if v.mute }}> Mute video sound</label>
+    <fieldset>
+      <legend>When a video or photo doesn't match the TV's shape</legend>
+      <label class="check"><input type="radio" name="fit_mode" value="fit" {{ 'checked' if v.fit_mode == 'fit' }}> Fit it, with black bars</label>
+      <label class="check"><input type="radio" name="fit_mode" value="fill" {{ 'checked' if v.fit_mode == 'fill' }}> Fill the screen, cropping the edges</label>
+    </fieldset>
+    <button class="primary">Save playback settings</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Login</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="password">
+    <label>Username <input name="username" value="{{ v.username }}" autocomplete="username" required></label>
+    <label>Current password <input type="password" name="current_password" autocomplete="current-password" required></label>
+    <label>New password <input type="password" name="new_password" minlength="8" autocomplete="new-password" required></label>
+    <label>Repeat new password <input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required></label>
+    <button class="primary">Update login</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Player</h2>
+  <p class="muted">Restart the video player if the TV shows something odd. The screen goes black for a few seconds.</p>
+  <button class="secondary" id="restart-btn">Restart player</button>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('restart-btn').addEventListener('click', async () => {
+  const token = document.querySelector('meta[name=csrf-token]').content;
+  const r = await fetch('/api/command', {method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': token},
+    body: JSON.stringify({cmd: 'restart'})});
+  alert(r.ok ? 'Player is restarting.' : 'Could not restart the player.');
+});
+</script>
+{% endblock %}

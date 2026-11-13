@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Playlist · Signage{% endblock %}
+{% block content %}
+<section class="status card" id="status">
+  <div>
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Checking the player…</span>
+  </div>
+  <button id="skip-btn" class="secondary">Skip to next</button>
+</section>
+
+<section class="card">
+  <label class="dropzone" id="dropzone">
+    <input type="file" id="file-input" multiple
+           accept="video/*,image/*,.mkv,.mov,.m4v,.ts">
+    <strong>Drop videos or photos here</strong>
+    <span class="muted">or click to choose files. 4K videos play best as H.265 (HEVC) MP4.</span>
+  </label>
+  <ul class="uploads" id="uploads"></ul>
+</section>
+
+<section>
+  <div class="list-head">
+    <h2>Playlist</h2>
+    <span class="muted" id="summary"></span>
+  </div>
+  <p class="muted hint">Drag the handle (or use the arrows) to change the order. Items play top to bottom, then loop.</p>
+  <ol class="playlist" id="playlist"></ol>
+  <p class="empty muted" id="empty" hidden>Nothing uploaded yet. Add some videos or photos above.</p>
+</section>
+
+<dialog id="preview-dialog">
+  <div id="preview-body"></div>
+  <form method="dialog"><button class="secondary">Close</button></form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

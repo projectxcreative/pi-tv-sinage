@@ -1,0 +1,22 @@
+[Unit]
+Description=TV signage player (mpv on HDMI)
+After=systemd-user-sessions.service sound.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=signage
+Group=signage
+SupplementaryGroups=video render audio input
+EnvironmentFile=/etc/signage/signage.env
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/signage
+ExecStart=/opt/signage/venv/bin/python -m signage.player
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectHome=true
+ReadWritePaths=/var/lib/signage
+
+[Install]
+WantedBy=multi-user.target

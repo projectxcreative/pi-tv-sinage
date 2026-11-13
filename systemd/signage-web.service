@@ -1,0 +1,28 @@
+[Unit]
+Description=TV signage web admin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signage
+Group=signage
+EnvironmentFile=/etc/signage/signage.env
+# Big uploads are buffered on the SD card, not in RAM (/tmp can be a RAM disk)
+Environment=TMPDIR=/var/lib/signage/tmp
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/signage
+ExecStart=/opt/signage/venv/bin/python -m signage.web
+Restart=always
+RestartSec=3
+# Allow listening on port 80 without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/signage
+
+[Install]
+WantedBy=multi-user.target

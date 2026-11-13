@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+dev-data/
+
+# Python environments and editor files
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+.vscode/
+.idea/
+
+# Local settings (real one lives in /etc/signage on the Pi)
+signage.env
+*.db
