@@ -110,7 +110,12 @@ a USB keyboard, pick the network with the arrow keys and Enter, type the
 password (Tab shows what you've typed) and press Enter. Once connected it shows
 the admin address for a few seconds, then the signage starts. If a saved
 network comes back on its own while the list is showing, it carries on by
-itself. To change networks later, SSH in and run `sudo signage-wifi`.
+itself. Press Esc to leave the wizard and start the signage without Wi-Fi. If nobody presses a key for 30 seconds (a countdown is shown, and any
+key restarts it), the wizard gives up and starts the signage without Wi-Fi, so
+a dropped network never leaves the TV stuck on the setup screen. The Pi keeps
+trying its saved networks in the background, and the web admin comes back as
+soon as one connects. To change networks later, SSH in and run
+`sudo signage-wifi` (no countdown when run by hand).
 
 ## Settings file (`/etc/signage/signage.env`)
 

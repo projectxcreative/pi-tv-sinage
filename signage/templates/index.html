@@ -1,12 +1,32 @@
 {% extends "base.html" %}
 {% block title %}Playlist · TV Signage{% endblock %}
 {% block content %}
-<section class="status card" id="status">
-  <div>
-    <span class="dot" id="status-dot"></span>
-    <span id="status-text">Checking the player…</span>
+<section class="card now-card" id="status">
+  <div class="screen" id="np-screen" title="Tap to refresh the picture">
+    <img id="np-img" alt="What's on the TV right now" hidden>
+    <span class="screen-empty" id="np-empty">No picture yet</span>
+    <span class="screen-age" id="np-age" hidden></span>
   </div>
-  <button id="skip-btn" class="secondary">Skip to next</button>
+  <div class="np-body">
+    <div class="status">
+      <div class="np-title">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Checking the player…</span>
+      </div>
+      <label class="toggle"><input type="checkbox" id="np-live" checked> Auto-refresh picture</label>
+    </div>
+    <div class="scrub" id="np-scrub" hidden>
+      <span class="time" id="np-pos">0:00</span>
+      <input type="range" id="np-range" min="0" max="100" step="0.1" value="0" aria-label="Position in the video">
+      <span class="time" id="np-dur">0:00</span>
+    </div>
+    <div class="np-controls">
+      <button class="secondary icon" id="np-back" title="Back 10 seconds" aria-label="Back 10 seconds" hidden>&#8634; 10s</button>
+      <button class="secondary" id="np-pause" hidden>Pause</button>
+      <button class="secondary icon" id="np-fwd" title="Forward 10 seconds" aria-label="Forward 10 seconds" hidden>10s &#8635;</button>
+      <button id="skip-btn" class="secondary">Skip to next</button>
+    </div>
+  </div>
 </section>
 
 <section class="card">
@@ -36,4 +56,5 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='nowplaying.js') }}"></script>
 {% endblock %}

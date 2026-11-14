@@ -223,3 +223,68 @@ def test_wifi_forget(wifi_client):
 def test_settings_page_has_wifi_section(client):
     html = client.get("/settings").get_data(as_text=True)
     assert 'id="wifi"' in html and "wifi.js" in html
+
+
+# ---- now playing / scrubbing ----------------------------------------------------
+
+def cmd(c, body):
+    return c.post("/api/command", json=body, headers={"X-CSRF-Token": c.token})
+
+
+def test_seek_and_pause_commands_validated(client, app):
+    assert cmd(client, {"cmd": "seek", "pos": 42.5}).status_code == 200
+    conn = db.connect(app.signage_config.db_path)
+    assert db.get_json(conn, "player_command")["pos"] == 42.5
+    assert cmd(client, {"cmd": "seek", "pos": "abc"}).status_code == 400
+    assert cmd(client, {"cmd": "seek", "pos": -1}).status_code == 400
+    assert cmd(client, {"cmd": "pause", "paused": True}).status_code == 200
+    assert db.get_json(conn, "player_command") ["paused"] is True
+
+
+def test_status_includes_playback(client, app):
+    conn = db.connect(app.signage_config.db_path)
+    mid = db.add_media(conn, filename="v.mp4", original_name="Promo.mp4", kind="video")
+    db.set_json(conn, "now_playing", {"id": mid, "since": 1})
+    db.set_json(conn, "playback", {"id": mid, "pos": 5.0, "duration": 60.0, "paused": True})
+    np = client.get("/api/status").get_json()["now_playing"]
+    assert np["kind"] == "video" and np["pos"] == 5.0 and np["duration"] == 60.0 and np["paused"] is True
+    db.set_json(conn, "playback", {"id": mid + 1, "pos": 9})  # stale, other item
+    assert client.get("/api/status").get_json()["now_playing"]["pos"] is None
+
+
+def test_screen_snapshot_routes(client, app):
+    assert client.get("/api/screen").status_code == 404
+    r = client.post("/api/screen/refresh", headers={"X-CSRF-Token": client.token})
+    assert r.status_code == 202
+    conn = db.connect(app.signage_config.db_path)
+    first = db.get_setting(conn, "snapshot_request")
+    client.post("/api/screen/refresh", headers={"X-CSRF-Token": client.token})
+    assert db.get_setting(conn, "snapshot_request") == first  # throttled to 1/s
+    (app.signage_config.run_dir / "screen.jpg").write_bytes(jpeg_bytes().getvalue())
+    r = client.get("/api/screen")
+    assert r.status_code == 200 and r.headers["Cache-Control"] == "no-store"
+
+
+def test_screen_requires_login(app):
+    assert app.test_client().get("/api/screen").status_code in (302, 401)
+
+
+def test_power_actions(tmp_path):
+    calls = []
+    config = Config(tmp_path)
+    app = create_app(config, power=calls.append)
+    app.config["TESTING"] = True
+    set_credentials(db.connect(config.db_path), "admin", "correct horse")
+    c = app.test_client()
+    login(c)
+    tok = csrf(c, "/")
+    assert c.post("/api/power", json={"action": "shutdown"}).status_code == 400  # no CSRF token
+    assert c.post("/api/power", json={"action": "format"}, headers={"X-CSRF-Token": tok}).status_code == 400
+    assert c.post("/api/power", json={"action": "restart"}, headers={"X-CSRF-Token": tok}).status_code == 202
+    import time as t
+    for _ in range(40):
+        if calls:
+            break
+        t.sleep(0.05)
+    assert calls == ["restart"]
+    assert app.test_client().post("/api/power", json={"action": "shutdown"}).status_code == 401

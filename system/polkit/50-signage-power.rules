@@ -1,0 +1,13 @@
+// Lets the signage web admin (user "signage") restart or shut down the Pi
+// from Settings > Power, and nothing else.
+polkit.addRule(function (action, subject) {
+  var allowed = [
+    "org.freedesktop.login1.power-off",
+    "org.freedesktop.login1.power-off-multiple-sessions",
+    "org.freedesktop.login1.reboot",
+    "org.freedesktop.login1.reboot-multiple-sessions"
+  ];
+  if (subject.user === "signage" && allowed.indexOf(action.id) >= 0) {
+    return polkit.Result.YES;
+  }
+});

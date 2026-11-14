@@ -4,7 +4,8 @@ Runs on the console (tty1) before the player starts. If the Pi joins a known
 network within a short wait, it exits quietly. Otherwise it shows a full-screen
 list of Wi-Fi networks: pick one with the arrow keys, type the password, and it
 connects with NetworkManager (nmcli), shows the admin address, and exits so the
-signage can start.
+signage can start. Esc leaves without changing anything. If nobody presses a key for 30 seconds, it gives up and starts
+the signage anyway (the Pi keeps trying saved networks in the background).
 
     python -m signage.wifi_setup            # normal boot behaviour
     python -m signage.wifi_setup --force    # show the wizard even if online
@@ -23,6 +24,10 @@ import time
 from dataclasses import dataclass
 
 WAIT_FOR_KNOWN_SECONDS = 45
+# At boot, if nobody touches the keyboard for this long, give up and start the
+# signage: the videos are stored on the Pi, and NetworkManager keeps trying the
+# saved networks in the background.
+IDLE_SECONDS = 30
 SUCCESS_SECONDS = 15
 CONSOLE_FONT = "Uni2-TerminusBold32x16"
 
@@ -328,13 +333,27 @@ def bars(signal: int) -> str:
     return "█" * n + "·" * (4 - n)
 
 
+class IdleTimeout(Exception):
+    """Nobody pressed a key for IDLE_SECONDS: start the signage."""
+
+
+class Quit(Exception):
+    """Esc pressed: leave the wizard and start the signage."""
+
+
+ESC = 27
+
+
 class UI:
     OTHER = "Other network (type its name)..."
     RESCAN = "Scan again"
     SKIP = "Skip: start the signage without Wi-Fi"
 
-    def __init__(self, stdscr, nm: NM, hostname: str, wait: int = WAIT_FOR_KNOWN_SECONDS):
+    def __init__(self, stdscr, nm: NM, hostname: str, wait: int = WAIT_FOR_KNOWN_SECONDS,
+                 idle: int = IDLE_SECONDS):
         self.wait = wait
+        self.idle = idle
+        self.idle_until = None
         self.force = False
         self.s = stdscr
         self.nm = nm
@@ -392,6 +411,29 @@ class UI:
             self.footer(foot)
         self.s.refresh()
 
+    # idle timeout -------------------------------------------------------
+    def touched(self) -> None:
+        """A key was pressed: restart the countdown."""
+        self.idle_until = time.monotonic() + self.idle if self.idle_until is not None else None
+
+    def idle_left(self) -> int | None:
+        """Seconds until the signage starts by itself, or None if no countdown."""
+        if self.idle_until is None:
+            return None
+        left = int(self.idle_until - time.monotonic() + 0.999)
+        if left <= 0:
+            raise IdleTimeout
+        return left
+
+    def countdown(self) -> None:
+        left = self.idle_left()
+        if left is None:
+            return
+        h = self.s.getmaxyx()[0]
+        self.put(h - 4, self.left(),
+                 f"No key pressed: starting the signage without Wi-Fi in {left}s.",
+                 curses.color_pair(6) | curses.A_BOLD)
+
     # screens --------------------------------------------------------------
     def wait_for_known(self, seconds: int) -> bool:
         """Wait for a saved network. Any key skips straight to the list."""
@@ -405,15 +447,19 @@ class UI:
                 return False
             self.message("Connecting to the network...",
                          [(f"Looking for a saved Wi-Fi network or a network cable ({left}s).", 0)],
-                         "Press any key to set up Wi-Fi now.")
-            if self.s.getch() != -1:
+                         "Press any key to set up Wi-Fi now, or Esc to start the signage.")
+            key = self.s.getch()
+            if key == ESC:
+                raise Quit
+            if key != -1:
                 return False
 
     def choose(self) -> tuple[str, Network | None]:
         """Network list. Returns (action, network): action is pick/other/skip/online."""
         networks = self.scan()
         sel = 0
-        self.s.timeout(3000)
+        self.s.timeout(1000)
+        last_check = time.monotonic()
         while True:
             items = [n.ssid for n in networks] + [self.OTHER, self.RESCAN, self.SKIP]
             sel = max(0, min(sel, len(items) - 1))
@@ -438,14 +484,20 @@ class UI:
                         y += 1
                 self.put(y, x, line, attr)
                 y += 1
-            self.footer("Up/Down choose   Enter select   R scan again")
+            self.footer("Up/Down choose   Enter select   R scan again   Esc start the signage")
+            self.countdown()
             self.s.refresh()
             key = self.s.getch()
             if key == -1:
                 # Nothing pressed: if a saved network came back on its own, carry on.
-                if not self.force and self.nm.online():
-                    return "online", None
+                if not self.force and time.monotonic() - last_check >= 3:
+                    last_check = time.monotonic()
+                    if self.nm.online():
+                        return "online", None
                 continue
+            self.touched()
+            if key == ESC:
+                return "skip", None
             if key in (curses.KEY_UP, ord("k")):
                 sel = (sel - 1) % len(items)
             elif key in (curses.KEY_DOWN, ord("j"), 9):
@@ -476,7 +528,7 @@ class UI:
         """Single-line input. Returns text, or None if Esc was pressed."""
         value = ""
         show = not secret
-        self.s.timeout(-1)
+        self.s.timeout(1000)
         curses.curs_set(1)
         try:
             while True:
@@ -492,6 +544,7 @@ class UI:
                 if secret:
                     hint += "   Tab " + ("hide" if show else "show") + " password"
                 self.footer(hint)
+                self.countdown()
                 try:
                     self.s.move(y + 2, x + 1 + min(len(shown), 66))
                 except curses.error:
@@ -500,7 +553,8 @@ class UI:
                 try:
                     ch = self.s.get_wch()
                 except curses.error:
-                    continue
+                    continue  # no key this second: redraw the countdown
+                self.touched()
                 if ch in ("\n", "\r") or ch == curses.KEY_ENTER:
                     return value
                 if ch == "\x1b":
@@ -518,7 +572,10 @@ class UI:
 
     def connect(self, ssid: str, password: str, hidden: bool) -> tuple[bool, str]:
         self.message("Connecting...", [(f'Joining "{ssid}". This can take up to 30 seconds.', 0)])
-        return self.nm.connect(ssid, password, hidden)
+        try:
+            return self.nm.connect(ssid, password, hidden)
+        finally:
+            self.touched()  # give them the full countdown to read any error
 
     def success(self, ssid: str) -> None:
         ip = self.nm.ip_address()
@@ -538,8 +595,21 @@ class UI:
 
     def run(self, force: bool) -> int:
         self.force = force
-        if not force and self.wait_for_known(self.wait):
+        try:
+            if not force and self.wait_for_known(self.wait):
+                return 0
+        except Quit:
             return 0
+        # At boot nobody may be there to answer: count down to starting the
+        # signage. Running it by hand (--force) means someone is at the keyboard.
+        if not force and self.idle > 0:
+            self.idle_until = time.monotonic() + self.idle
+        try:
+            return self.wizard()
+        except IdleTimeout:
+            return 0
+
+    def wizard(self) -> int:
         note = ""
         while True:
             action, net = self.choose()
@@ -571,9 +641,14 @@ class UI:
                     return 0
                 note = err or "Could not connect."
                 if not secure:
-                    self.message("Couldn't connect", [(note, curses.color_pair(6))], "Press any key to go back.")
-                    self.s.timeout(-1)
-                    self.s.getch()
+                    self.s.timeout(1000)
+                    while True:
+                        self.message("Couldn't connect", [(note, curses.color_pair(6))], "Press any key to go back.")
+                        self.countdown()
+                        self.s.refresh()
+                        if self.s.getch() != -1:
+                            self.touched()
+                            break
                     note = ""
                     break
 
@@ -583,6 +658,8 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="show the wizard even when already online")
     p.add_argument("--demo", action="store_true", help="use fake networks (for trying the UI)")
     p.add_argument("--wait", type=int, default=WAIT_FOR_KNOWN_SECONDS, help="seconds to wait for a saved network")
+    p.add_argument("--idle", type=int, default=IDLE_SECONDS,
+                   help="start the signage after this many seconds with no key pressed (0 = never)")
     args = p.parse_args(argv)
 
     nm = DemoNM() if args.demo else NM()
@@ -597,7 +674,7 @@ def main(argv=None) -> int:
     set_console_font()
     set_palette(True)
     try:
-        return curses.wrapper(lambda scr: UI(scr, nm, socket.gethostname().removesuffix(".local"), args.wait).run(args.force))
+        return curses.wrapper(lambda scr: UI(scr, nm, socket.gethostname().removesuffix(".local"), args.wait, args.idle).run(args.force))
     except KeyboardInterrupt:
         return 0
     finally:

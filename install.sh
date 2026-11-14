@@ -100,12 +100,12 @@ exec $APP_DIR/venv/bin/python -m signage.wifi_setup --force "\$@"
 EOF
 chmod 755 /usr/local/bin/signage-wifi
 
-say "Letting the web admin manage Wi-Fi"
+say "Letting the web admin manage Wi-Fi and power"
 if [[ -d /etc/polkit-1/rules.d ]]; then
-  install -m 644 "$SRC_DIR/system/polkit/50-signage-wifi.rules" /etc/polkit-1/rules.d/
+  install -m 644 "$SRC_DIR"/system/polkit/*.rules /etc/polkit-1/rules.d/
   systemctl try-reload-or-restart polkit.service 2>/dev/null || true
 else
-  echo "polkit isn't installed, so the Wi-Fi page in Settings will be read-only."
+  echo "polkit isn't installed, so Wi-Fi changes and Restart/Shut down in Settings won't work."
 fi
 
 say "Installing systemd services"

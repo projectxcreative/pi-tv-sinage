@@ -7,11 +7,14 @@ so mpv moves from item to item without going idle. Changes made in the web
 admin are picked up within a second or two.
 """
 import logging
+import os
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+from PIL import Image
 
 from . import db
 from .config import Config
@@ -20,6 +23,7 @@ from .mpv_ipc import MpvClient, MpvError
 log = logging.getLogger("signage.player")
 
 POLL_SECONDS = 1.0
+SNAPSHOT_WIDTH = 960
 HEARTBEAT_SECONDS = 5.0
 
 
@@ -56,6 +60,8 @@ def mpv_command_line(config, image_duration):
         "--hwdec=%s" % config.hwdec,
         "--audio-device=%s" % config.audio_device,
         "--input-ipc-server=%s" % config.mpv_socket,
+        "--screenshot-format=jpg",
+        "--screenshot-jpeg-quality=80",
         *config.vo_args,
         *config.extra_mpv_args,
     ]
@@ -77,6 +83,8 @@ class Player:
         self.command_nonce = None
         self.last_heartbeat = 0.0
         self.last_idle_start = 0.0
+        self.playback = None           # last {pos, duration, paused} written
+        self.snapshot_nonce = db.get_setting(self.conn, "snapshot_request")
 
         cmd = db.get_json(self.conn, "player_command")
         self.command_nonce = cmd.get("nonce") if cmd else None
@@ -165,6 +173,44 @@ class Player:
     def set_now_playing(self, item):
         db.set_json(self.conn, "now_playing",
                     {"id": item["id"], "since": time.time()} if item else None)
+        self.playback = None
+        db.set_json(self.conn, "playback", None)
+
+    def report_playback(self):
+        """Publish position/length/pause for the web admin's scrubber."""
+        if not self.current:
+            return
+        pos = self.mpv.get("time-pos")
+        dur = self.mpv.get("duration")
+        paused = bool(self.mpv.get("pause", False))
+        state = {"id": self.current["id"],
+                 "pos": round(pos, 1) if isinstance(pos, (int, float)) else None,
+                 "duration": round(dur, 1) if isinstance(dur, (int, float)) else None,
+                 "paused": paused}
+        if state != self.playback:
+            self.playback = state
+            db.set_json(self.conn, "playback", dict(state, at=time.time()))
+
+    def take_snapshot(self):
+        """Save a small JPEG of what's on screen for the web admin."""
+        run = Path(self.config.run_dir)
+        raw, out, tmp = run / "screen-raw.jpg", run / "screen.jpg", run / "screen.tmp.jpg"
+        try:
+            if self.mpv.get("idle-active", False):
+                out.unlink(missing_ok=True)
+            else:
+                self.mpv.command("screenshot-to-file", str(raw), "video", timeout=15)
+                with Image.open(raw) as im:
+                    im.draft("RGB", (SNAPSHOT_WIDTH, SNAPSHOT_WIDTH))  # fast JPEG downscale on decode
+                    im = im.convert("RGB")
+                    im.thumbnail((SNAPSHOT_WIDTH, SNAPSHOT_WIDTH * 9 // 16 * 2))
+                    im.save(tmp, "JPEG", quality=75)
+                os.replace(tmp, out)
+        except (MpvError, OSError) as exc:
+            log.warning("Snapshot failed: %s", exc)
+        finally:
+            raw.unlink(missing_ok=True)
+        db.set_setting(self.conn, "snapshot_at", f"{time.time():.2f}")
 
     def apply_settings(self):
         mute = db.get_setting(self.conn, "mute", "0") == "1"
@@ -243,6 +289,13 @@ class Player:
             self.command_nonce = cmd.get("nonce")
             self.run_command(cmd)
 
+        self.report_playback()
+
+        snap = db.get_setting(self.conn, "snapshot_request")
+        if snap and snap != self.snapshot_nonce:
+            self.snapshot_nonce = snap
+            self.take_snapshot()
+
     def on_playlist_changed(self):
         log.info("Playlist or settings changed")
         self.apply_settings()
@@ -274,7 +327,12 @@ class Player:
                     self.load(item, "replace")
             elif cmd["cmd"] == "restart":
                 self.mpv.command("quit")
-        except MpvError as exc:
+            elif cmd["cmd"] == "seek" and self.current:
+                self.mpv.command("seek", float(cmd["pos"]), "absolute")
+            elif cmd["cmd"] == "pause":
+                self.mpv.set("pause", bool(cmd.get("paused")))
+            self.report_playback()
+        except (MpvError, KeyError, TypeError, ValueError) as exc:
             log.warning("Command failed: %s", exc)
 
 

@@ -124,7 +124,23 @@ h3 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 .5rem; }
 .pass-row button { margin-top: 4px; }
 .alert.info { background: color-mix(in srgb, var(--px-blue) 12%, var(--card)); color: var(--text); }
 
+.now-card { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 16px; align-items: center; }
+.screen { cursor: pointer; position: relative; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden;
+  display: grid; place-items: center; }
+.screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.screen-empty { color: #B9B4D9; font-size: 13px; }
+.screen-age { position: absolute; right: 6px; bottom: 6px; font-size: 11px; color: #fff;
+  background: rgba(8,0,62,.7); padding: 1px 6px; border-radius: 99px; }
+.np-body { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.np-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.scrub { display: flex; align-items: center; gap: 10px; }
+.scrub input[type=range] { flex: 1; min-width: 0; accent-color: var(--px-magenta); height: 28px; }
+.scrub .time { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.2em; }
+.scrub .time:last-child { text-align: right; }
+.np-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
 @media (max-width: 640px) {
+  .now-card { grid-template-columns: 1fr; }
   .product { display: none; }
   .item { grid-template-columns: 24px 84px 1fr; }
   .thumb { width: 84px; }

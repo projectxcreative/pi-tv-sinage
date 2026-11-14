@@ -113,3 +113,47 @@ def test_settings_applied(tmp_path):
     db.bump_version(conn)
     p.poll()
     assert p.mpv.props["mute"] is True and p.mpv.props["panscan"] == 1.0
+
+
+def test_reports_playback_position(tmp_path):
+    p, conn = make(tmp_path, ["a.mp4"])
+    loaded(p, "a.mp4")
+    p.mpv.props.update({"time-pos": 12.34, "duration": 60.0, "pause": False})
+    p.poll()
+    pb = db.get_json(conn, "playback")
+    assert pb["pos"] == 12.3 and pb["duration"] == 60.0 and pb["paused"] is False
+
+
+def test_seek_and_pause_commands(tmp_path):
+    p, conn = make(tmp_path, ["a.mp4"])
+    loaded(p, "a.mp4")
+    db.set_json(conn, "player_command", {"cmd": "seek", "pos": 30, "nonce": "s1"})
+    p.poll()
+    assert ("seek", 30.0, "absolute") in p.mpv.calls
+    db.set_json(conn, "player_command", {"cmd": "pause", "paused": True, "nonce": "s2"})
+    p.poll()
+    assert p.mpv.props["pause"] is True
+    db.set_json(conn, "player_command", {"cmd": "seek", "pos": "junk", "nonce": "s3"})
+    p.poll()  # bad value is logged, not fatal
+
+
+def test_snapshot_written_small(tmp_path):
+    from PIL import Image
+
+    p, conn = make(tmp_path, ["a.mp4"])
+    loaded(p, "a.mp4")
+    p.mpv.props["idle-active"] = False
+
+    def fake_command(*args, timeout=10, **named):
+        p.mpv.calls.append(named or args)
+        if args and args[0] == "screenshot-to-file":
+            Image.new("RGB", (3840, 2160), (8, 0, 62)).save(args[1], "JPEG")
+    p.mpv.command = fake_command
+    db.set_setting(conn, "snapshot_request", "n1")
+    p.poll()
+    out = p.config.run_dir / "screen.jpg"
+    assert out.exists()
+    with Image.open(out) as im:
+        assert im.size == (960, 540)
+    assert not (p.config.run_dir / "screen-raw.jpg").exists()
+    assert float(db.get_setting(conn, "snapshot_at")) > 0

@@ -66,6 +66,16 @@
   </form>
 </section>
 
+<section class="card" id="power">
+  <h2>Power</h2>
+  <p class="muted">Shut the Pi down before unplugging it, so the memory card isn't damaged.</p>
+  <div class="np-controls">
+    <button class="secondary" id="restart-pi-btn" type="button">Restart Pi</button>
+    <button class="danger" id="shutdown-btn" type="button">Shut down</button>
+  </div>
+  <p id="power-msg" class="alert info" hidden></p>
+</section>
+
 <section class="card">
   <h2>Player</h2>
   <p class="muted">Restart the video player if the TV shows something odd. The screen goes black for a few seconds.</p>
@@ -74,6 +84,30 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='wifi.js') }}"></script>
+<script>
+(() => {
+  const token = document.querySelector('meta[name=csrf-token]').content;
+  const msg = document.getElementById('power-msg');
+  async function power(action, question, done) {
+    if (!confirm(question)) return;
+    try {
+      const r = await fetch('/api/power', {method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': token},
+        body: JSON.stringify({action})});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+      msg.hidden = false;
+      msg.textContent = done;
+      document.querySelectorAll('#power button').forEach((b) => { b.disabled = true; });
+    } catch (e) { alert('Could not ' + action + ': ' + e.message); }
+  }
+  document.getElementById('shutdown-btn').addEventListener('click', () => power('shutdown',
+    'Shut down the Pi? The TV goes blank, and to turn it back on you need to unplug the power and plug it in again.',
+    'Shutting down. Wait about 20 seconds, until the Pi\'s green light has stopped flashing, then it\'s safe to unplug.'));
+  document.getElementById('restart-pi-btn').addEventListener('click', () => power('restart',
+    'Restart the Pi? The TV goes blank for about a minute.',
+    'Restarting. The signage will be back in about a minute; reload this page then.'));
+})();
+</script>
 <script>
 document.getElementById('restart-btn').addEventListener('click', async () => {
   const token = document.querySelector('meta[name=csrf-token]').content;

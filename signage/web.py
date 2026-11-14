@@ -92,7 +92,14 @@ class WifiSwitcher:
                     "finished": time.time()}
 
 
-def create_app(config=None, nm=None):
+def power_action(action):
+    """Ask systemd to restart or shut down the Pi (allowed by a polkit rule)."""
+    import subprocess
+    verb = {"shutdown": "poweroff", "restart": "reboot"}[action]
+    subprocess.run(["systemctl", verb], check=True, capture_output=True, text=True, timeout=30)
+
+
+def create_app(config=None, nm=None, power=None):
     config = config or Config()
     config.ensure_dirs()
 
@@ -110,6 +117,7 @@ def create_app(config=None, nm=None):
         nm = DemoNM() if os.environ.get("SIGNAGE_WIFI_DEMO") else NM()
     wifi = WifiSwitcher(nm)
     app.wifi = wifi
+    power = power or power_action
 
     def get_db():
         if "db" not in g:
@@ -365,10 +373,16 @@ def create_app(config=None, nm=None):
         now = db.get_json(conn, "now_playing") or {}
         heartbeat = float(db.get_setting(conn, "player_heartbeat", "0") or 0)
         current = db.get_media(conn, now.get("id")) if now.get("id") else None
+        playback = db.get_json(conn, "playback") or {}
+        if not current or playback.get("id") != current["id"]:
+            playback = {}
         return jsonify(
             player_online=time.time() - heartbeat < 15,
             now_playing={"id": current["id"], "name": current["original_name"],
-                         "since": now.get("since")} if current else None,
+                         "kind": current["kind"], "since": now.get("since"),
+                         "pos": playback.get("pos"), "duration": playback.get("duration"),
+                         "paused": bool(playback.get("paused"))} if current else None,
+            snapshot_at=float(db.get_setting(conn, "snapshot_at", "0") or 0),
         )
 
     @app.post("/api/command")
@@ -376,9 +390,19 @@ def create_app(config=None, nm=None):
     def api_command():
         body = request.get_json(silent=True) or {}
         cmd = body.get("cmd")
-        if cmd not in ("next", "play", "restart"):
+        if cmd not in ("next", "play", "restart", "seek", "pause"):
             return jsonify(error="unknown command"), 400
         payload = {"cmd": cmd, "nonce": uuid.uuid4().hex}
+        if cmd == "seek":
+            try:
+                pos = float(body.get("pos"))
+            except (TypeError, ValueError):
+                return jsonify(error="pos must be a number of seconds"), 400
+            if not 0 <= pos < 24 * 3600:
+                return jsonify(error="pos out of range"), 400
+            payload["pos"] = pos
+        if cmd == "pause":
+            payload["paused"] = bool(body.get("paused"))
         if cmd == "play":
             try:
                 payload["id"] = int(body.get("id"))
@@ -386,6 +410,49 @@ def create_app(config=None, nm=None):
                 return jsonify(error="id required"), 400
         db.set_json(get_db(), "player_command", payload)
         return jsonify(ok=True)
+
+    # ---- power -----------------------------------------------------------------
+
+    @app.post("/api/power")
+    @login_required
+    def api_power():
+        action = (request.get_json(silent=True) or {}).get("action")
+        if action not in ("shutdown", "restart"):
+            return jsonify(error="action must be shutdown or restart"), 400
+
+        def go():
+            time.sleep(1)  # let the reply reach the browser first
+            try:
+                power(action)
+            except Exception as exc:
+                log.error("Power %s failed: %s", action, getattr(exc, "stderr", None) or exc)
+
+        log.warning("%s requested from the web admin by %s", action.capitalize(), session.get("user"))
+        threading.Thread(target=go, daemon=True).start()
+        return jsonify(ok=True), 202
+
+    # ---- live view of the screen -------------------------------------------------
+
+    @app.post("/api/screen/refresh")
+    @login_required
+    def api_screen_refresh():
+        """Ask the player for a fresh snapshot (at most one a second)."""
+        conn = get_db()
+        last = float(db.get_setting(conn, "snapshot_requested_at", "0") or 0)
+        if time.time() - last >= 1:
+            db.set_setting(conn, "snapshot_requested_at", f"{time.time():.2f}")
+            db.set_setting(conn, "snapshot_request", uuid.uuid4().hex)
+        return jsonify(ok=True), 202
+
+    @app.get("/api/screen")
+    @login_required
+    def api_screen():
+        path = config.run_dir / "screen.jpg"
+        if not path.exists():
+            return jsonify(error="Nothing on screen"), 404
+        resp = send_from_directory(config.run_dir, "screen.jpg", max_age=0)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     # ---- Wi-Fi -------------------------------------------------------------------
 
